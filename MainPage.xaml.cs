@@ -20,13 +20,12 @@ namespace BobikAssistant
 {
     public partial class MainPage : ContentPage
     {
+        private VoskKeywordDetector keywordDetector;
         private WaveInEvent waveIn;
         private WaveFileWriter writer;
         private bool _isRecording;
         private string _filePath;
 
-        private Porcupine porcupine;
-        private int _porcupineFrameLength;
         private List<short> _audioBuffer;
 
         private Model voskModel;
@@ -47,10 +46,20 @@ namespace BobikAssistant
             }
 
             _filePath = $"{folderPath}/записьГолоса.wav";
-
-            InitPorcupine();
+            keywordDetector = new VoskKeywordDetector("бобик", OnKeywordDetected);
+            keywordDetector.StartListening();
             InitVosk();
         }
+
+        private void OnKeywordDetected()
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                OnRecordButtonClicked(null, null);
+            });
+            keywordDetector.StopListening();
+        }
+
 
         public class ChatResponse
         {
@@ -112,24 +121,6 @@ namespace BobikAssistant
             public int CompletionTokens { get; set; }
         }
 
-
-        private void InitPorcupine()
-        {
-            string accessKey = Environment.GetEnvironmentVariable("ACCESS_KEY_PORCUPINE");
-            string keywordFilePath = Path.Combine(AppContext.BaseDirectory, "Робот_ru_windows_v3_0_0.ppn");
-            string modelFilePath = Path.Combine(AppContext.BaseDirectory, "porcupine_params_ru.pv");
-
-            porcupine = Porcupine.FromKeywordPaths(
-                accessKey,
-                new List<string> { keywordFilePath },
-                modelPath: modelFilePath
-            );
-
-            _porcupineFrameLength = porcupine.FrameLength;
-
-            StartListening();
-        }
-
         private void InitVosk()
         {
             /////////////////////////////////////////////
@@ -139,7 +130,7 @@ namespace BobikAssistant
 
             try
             {
-                voskModel = new Model(Path.Combine(AppContext.BaseDirectory, "voiceModels/vosk-model-small-ru-0.22"));
+                voskModel = new Model("D:/Sources/BobikAssistant/BobikAssistant/bin/voiceModels/vosk-model-small-ru-0.22");
             }
             catch (Exception ex)
             {
@@ -150,44 +141,11 @@ namespace BobikAssistant
             }
         }
 
-        private void StartListening()
-        {
-            waveIn = new WaveInEvent
-            {
-                WaveFormat = new WaveFormat(porcupine.SampleRate, 16, 1)
-            };
-
-            waveIn.DataAvailable += OnDataAvailable;
-            waveIn.StartRecording();
-        }
-
         private void OnDataAvailable(object sender, WaveInEventArgs e)
         {
-            short[] audioData = new short[e.BytesRecorded / 2];
-            Buffer.BlockCopy(e.Buffer, 0, audioData, 0, e.BytesRecorded);
-
             if (_isRecording && writer != null)
             {
                 writer.Write(e.Buffer, 0, e.BytesRecorded);
-            }
-            else
-            {
-                _audioBuffer.AddRange(audioData);
-
-                while (_audioBuffer.Count >= _porcupineFrameLength)
-                {
-                    short[] frame = _audioBuffer.GetRange(0, _porcupineFrameLength).ToArray();
-                    _audioBuffer.RemoveRange(0, _porcupineFrameLength);
-
-                    int keywordIndex = porcupine.Process(frame);
-                    if (keywordIndex >= 0 && !_isRecording)
-                    {
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            OnRecordButtonClicked(null, null);
-                        });
-                    }
-                }
             }
         }
 
@@ -228,7 +186,7 @@ namespace BobikAssistant
             }
         }
 
-        private async void OnRecordButtonClicked(object sender, EventArgs e)
+        private void OnRecordButtonClicked(object sender, EventArgs e)
         {
             if (_isRecording)
             {
@@ -241,7 +199,7 @@ namespace BobikAssistant
                 _isRecording = false;
 
                 // Обработка файла с помощью VOSK
-                await ProcessWithVosk(_filePath);
+                Task.Run(() => ProcessWithVosk(_filePath));
             }
             else
             {
@@ -330,7 +288,6 @@ namespace BobikAssistant
                 {
                     Console.WriteLine("Ошибка: " + response.StatusCode);
                 }
-                InitPorcupine();
                 InitVosk();
             }
         }
@@ -420,6 +377,7 @@ namespace BobikAssistant
                                 }
                             }
                         }
+                        keywordDetector.StartListening();
 
                     }
                 }
