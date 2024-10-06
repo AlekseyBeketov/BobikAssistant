@@ -14,6 +14,7 @@ using Vosk;
 using System.Globalization;
 using System.Speech.Synthesis;
 using DotNetEnv;
+using System.Timers;
 // using UIKit;
 
 namespace BobikAssistant
@@ -29,6 +30,13 @@ namespace BobikAssistant
         private List<short> _audioBuffer;
 
         private Model voskModel;
+
+        private System.Timers.Timer silenceTimer;
+        private DateTime lastSoundTime;
+        private const int SilenceTimeout = 1500;
+
+        public string text = "";
+        private static readonly string storyFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
 
         public MainPage()
         {
@@ -49,6 +57,8 @@ namespace BobikAssistant
             keywordDetector = new VoskKeywordDetector("бобик", OnKeywordDetected);
             keywordDetector.StartListening();
             InitVosk();
+            silenceTimer = new System.Timers.Timer(100);
+            silenceTimer.Elapsed += OnSilenceTimerElapsed;
         }
 
         private void OnKeywordDetected()
@@ -147,6 +157,27 @@ namespace BobikAssistant
             {
                 writer.Write(e.Buffer, 0, e.BytesRecorded);
             }
+
+            // Проверка уровня звука
+            for (int i = 0; i < e.BytesRecorded; i += 2)
+            {
+                short sample = BitConverter.ToInt16(e.Buffer, i);
+                if (Math.Abs(sample) > 500) // Порог для определения звука
+                {
+                    lastSoundTime = DateTime.Now;
+                }
+            }
+        }
+
+        private void OnSilenceTimerElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (_isRecording && (DateTime.Now - lastSoundTime).TotalMilliseconds > SilenceTimeout)
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    OnRecordButtonClicked(null, null);
+                });
+            }
         }
 
         private void SpeakText(string text)
@@ -193,9 +224,9 @@ namespace BobikAssistant
                 waveIn.StopRecording();
                 writer?.Dispose();
                 DisposeWaveIn();
-
-                StatusLabel.Text = $"Запись завершена. Файл сохранен: {_filePath}";
-                (sender as Button).Text = "Начать запись";
+                silenceTimer.Stop();
+                // StatusLabel.Text = $"Запись завершена. Файл сохранен: {_filePath}";
+                RecordButton.Text = "Начать запись";
                 _isRecording = false;
 
                 // Обработка файла с помощью VOSK
@@ -219,6 +250,8 @@ namespace BobikAssistant
                     RecordButton.Text = "Остановить запись";
                 });
                 _isRecording = true;
+                lastSoundTime = DateTime.Now;
+                silenceTimer.Start();
             }
         }
 
@@ -237,6 +270,8 @@ namespace BobikAssistant
         private static readonly string apiKeyMistral = Environment.GetEnvironmentVariable("API_KEY_MISTRAL");
         private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 
+
+        List<object> messageHistory = ReadMessageHistory();
         private async Task SendToMistralAsync(string text)
         {
             using (HttpClient client = new HttpClient())
@@ -244,15 +279,16 @@ namespace BobikAssistant
                 // Устанавливаем заголовки
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyMistral);
+                WriteLastMessage(new { role = "user", content = text });
+                // Читаем историю сообщений из файла
+                messageHistory.Add(new { role = "user", content = "Отвечай как голосовой ассистент, дружелюбно и по делу." + text });
 
                 // Создаем тело запроса
                 var requestBody = new
                 {
                     model = "mistral-large-latest",
-                    messages = new[]
-                    {
-                    new { role = "user", content = "Отвечай как голосовой ассистент, дружелюбно и по делу, но не более 850 символов." + text } // Передаем распознанный текст
-                }
+                    max_tokens = 850,
+                    messages = messageHistory.ToArray()
                 };
 
                 // Сериализуем тело запроса в JSON
@@ -277,6 +313,11 @@ namespace BobikAssistant
                         {
                             StatusLabel.Text = $"{chatResponse.Choices[0].Message.Content}";
                         });
+
+                        string newMessage = chatResponse.Choices[0].Message.Content.ToString();
+                        messageHistory.Add(new { role = "assistant", content = newMessage });
+                        WriteLastMessage(messageHistory);
+
                         SpeakText(chatResponse.Choices[0].Message.Content); // Озвучиваем ответ от ИИ
                     }
                     else
@@ -290,6 +331,25 @@ namespace BobikAssistant
                 }
                 InitVosk();
             }
+        }
+
+        private static List<object> ReadMessageHistory()
+        {
+            if (File.Exists(storyFilePath))
+            {
+                string json = File.ReadAllText(storyFilePath);
+                return JsonSerializer.Deserialize<List<object>>(json);
+            }
+            else
+            {
+                return new List<object>();
+            }
+        }
+
+        private static void WriteLastMessage(object lastMessage)
+        {
+            string json = JsonSerializer.Serialize(new List<object> { lastMessage });
+            File.WriteAllText(storyFilePath, json);
         }
 
         private async Task ProcessWithVosk(string filePath)
@@ -333,46 +393,26 @@ namespace BobikAssistant
                                             JsonElement root = doc.RootElement;
                                             if (root.TryGetProperty("text", out JsonElement textElement) && !string.IsNullOrWhiteSpace(textElement.GetString()))
                                             {
-                                                string text = textElement.GetString();
+                                                text = textElement.GetString();
                                                 firstTextFound = true; // Текст найден, больше искать не нужно
                                                 MainThread.BeginInvokeOnMainThread(() =>
                                                 {
                                                     StatusLabel.Text = $"{text}";
                                                 });
-                                                break;
+
+                                                foreach (var command in OtherCommands.Commands)
+                                                {
+                                                    string keyValue = command.Key;
+                                                    if (text.Contains(keyValue))
+                                                    {
+                                                        command.Value(StatusLabel);
+                                                        break; // WARNING 
+                                                    }
+                                                }
+
+                                                Task.Run(() => SendToMistralAsync(text));
                                             }
                                         }
-                                    }
-                                }
-                                else
-                                {
-                                    var partialResult = rec.PartialResult();
-                                    MainThread.BeginInvokeOnMainThread(() =>
-                                    {
-                                        StatusLabel.Text = $"{partialResult}";
-                                    });
-                                }
-                            }
-                        }
-
-                        if (!firstTextFound)
-                        {
-                            var finalResult = rec.FinalResult();
-                            if (!string.IsNullOrWhiteSpace(finalResult))
-                            {
-                                using (JsonDocument doc = JsonDocument.Parse(finalResult))
-                                {
-                                    JsonElement root = doc.RootElement;
-                                    if (root.TryGetProperty("text", out JsonElement textElement) && !string.IsNullOrWhiteSpace(textElement.GetString()))
-                                    {
-                                        string text = textElement.GetString();
-                                        MainThread.BeginInvokeOnMainThread(() =>
-                                        {
-                                            StatusLabel.Text = $"{text}";
-                                        });
-
-                                        // ОТПРАВЛЯЕМ ДАННЫЕ MISTRAL AI
-                                        Task.Run(() => SendToMistralAsync(text));
                                     }
                                 }
                             }
