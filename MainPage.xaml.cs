@@ -37,11 +37,13 @@ namespace BobikAssistant
 
         public string text = "";
         private static readonly string storyFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
+        private string apiKeyMistral = "";
 
         public MainPage()
         {
             string envFilePath = Path.Combine(AppContext.BaseDirectory, ".env");
             Env.Load(envFilePath);
+            apiKeyMistral = Environment.GetEnvironmentVariable("API_KEY_MISTRAL");
             InitializeComponent();
             _isRecording = false;
             _audioBuffer = new List<short>();
@@ -267,9 +269,7 @@ namespace BobikAssistant
         }
 
         // Метод для отправки распознанного текста в Mistral AI
-        private static readonly string apiKeyMistral = Environment.GetEnvironmentVariable("API_KEY_MISTRAL");
         private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
-
 
         List<object> messageHistory = ReadMessageHistory();
         private async Task SendToMistralAsync(string text)
