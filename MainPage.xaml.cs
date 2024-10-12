@@ -279,15 +279,14 @@ namespace BobikAssistant
                 // Устанавливаем заголовки
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyMistral);
-                WriteLastMessage(new { role = "user", content = text });
                 // Читаем историю сообщений из файла
-                messageHistory.Add(new { role = "user", content = "Отвечай как голосовой ассистент, дружелюбно и по делу." + text });
+                messageHistory = ReadMessageHistory();
+                messageHistory.Add(new { role = "user", content = "Отвечай как голосовой ассистент, дружелюбно и по делу, но не более 850 символов." + text });
 
                 // Создаем тело запроса
                 var requestBody = new
                 {
                     model = "mistral-large-latest",
-                    max_tokens = 850,
                     messages = messageHistory.ToArray()
                 };
 
@@ -309,16 +308,18 @@ namespace BobikAssistant
                     if (chatResponse != null && chatResponse.Choices != null && chatResponse.Choices.Length > 0)
                     {
                         // Выводим ответ
+                        string newMessage = chatResponse.Choices[0].Message.Content.ToString();
+                        newMessage = newMessage.Replace("**", "");
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
                             StatusLabel.Text = $"{chatResponse.Choices[0].Message.Content}";
                         });
 
-                        string newMessage = chatResponse.Choices[0].Message.Content.ToString();
+                        //messageHistory.Add(new { role = "user", content = text });
                         messageHistory.Add(new { role = "assistant", content = newMessage });
                         WriteLastMessage(messageHistory);
 
-                        SpeakText(chatResponse.Choices[0].Message.Content); // Озвучиваем ответ от ИИ
+                        SpeakText(newMessage); // Озвучиваем ответ от ИИ
                     }
                     else
                     {
@@ -346,9 +347,15 @@ namespace BobikAssistant
             }
         }
 
-        private static void WriteLastMessage(object lastMessage)
+        private static void WriteLastMessage(List<object> messages)
         {
-            string json = JsonSerializer.Serialize(new List<object> { lastMessage });
+            // Если сообщений больше 8, оставляем только последние 8
+            if (messages.Count > 8)
+            {
+                messages = messages.Skip(messages.Count - 8).ToList();
+            }
+
+            string json = JsonSerializer.Serialize(messages);
             File.WriteAllText(storyFilePath, json);
         }
 
