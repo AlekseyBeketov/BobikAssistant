@@ -1,31 +1,56 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+﻿<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="BobikAssistant.MainPage">
+             xmlns:local="clr-namespace:BobikAssistant"
+             x:Class="BobikAssistant.MainPage"
+                          Loaded="DownScroll">
+            
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:RoleToColorConverter x:Key="RoleToColorConverter" />
+            <local:RoleToHorizontalOptionsConverter x:Key="RoleToHorizontalOptionsConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
-    <ScrollView>
-        <VerticalStackLayout
-            Padding="30,0"
+    <ScrollView x:Name="scroller">
+        <VerticalStackLayout            
             Spacing="25">
+            
             <Image
                 Source="dotnet_bot.png"
-                HeightRequest="185"
+                HeightRequest="100"
                 Aspect="AspectFit"
                 SemanticProperties.Description="dot net bot in a race car number eight" />
+            
 
-
-            <Label
-                Text="Здесь могла бы быть ваша реклама"
-                Style="{StaticResource SubHeadline}"
-                SemanticProperties.HeadingLevel="Level2"
-                SemanticProperties.Description="Welcome to dot net Multi platform App U I" />
+            <!-- Добавляем CollectionView для отображения истории сообщений -->
+            <CollectionView x:Name="MessageHistoryView"
+                            ItemsSource="{Binding MessageHistory}"
+                            VerticalOptions="FillAndExpand">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <HorizontalStackLayout HorizontalOptions="FillAndExpand">
+                            <Frame Padding="10"
+                                   Margin="5"
+                                   MaximumWidthRequest="550"
+                                   CornerRadius="20"
+                                   HasShadow="True"
+                                   BackgroundColor="{Binding Role, Converter={StaticResource RoleToColorConverter}}"
+                                   HorizontalOptions="{Binding Role, Converter={StaticResource RoleToHorizontalOptionsConverter}}"
+                                   VerticalOptions="Center">
+                                <Label Text="{Binding Content}"
+                                       TextColor="White"
+                                       HorizontalOptions="Start"
+                                       VerticalOptions="Center" />
+                            </Frame>
+                        </HorizontalStackLayout>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
 
             <StackLayout Padding="10">
                 <Button x:Name="RecordButton" Text="Начать запись" Clicked="OnRecordButtonClicked" />
                 <Label x:Name="StatusLabel" Text="Нажмите кнопку для записи" />
             </StackLayout>
-
-
         </VerticalStackLayout>
     </ScrollView>
 

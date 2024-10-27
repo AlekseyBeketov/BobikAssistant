@@ -15,16 +15,22 @@ using System.Globalization;
 using System.Speech.Synthesis;
 using DotNetEnv;
 using System.Timers;
+using System.ComponentModel;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using Microsoft.Maui.Dispatching;
+
 // using UIKit;
 
 namespace BobikAssistant
 {
-    public partial class MainPage : ContentPage
+    public partial class MainPage : ContentPage, INotifyPropertyChanged
     {
         private VoskKeywordDetector keywordDetector;
         private WaveInEvent waveIn;
         private WaveFileWriter writer;
         private bool _isRecording;
+        private bool _isSpeaking;
         private string _filePath;
 
         private List<short> _audioBuffer;
@@ -39,6 +45,9 @@ namespace BobikAssistant
         private static readonly string storyFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
         private string apiKeyMistral = "";
 
+        // Добавляем ObservableCollection для хранения истории сообщений
+        public ObservableCollection<Message> MessageHistory { get; set; } = new ObservableCollection<Message>();
+
         public MainPage()
         {
             string envFilePath = Path.Combine(AppContext.BaseDirectory, ".env");
@@ -46,6 +55,7 @@ namespace BobikAssistant
             apiKeyMistral = Environment.GetEnvironmentVariable("API_KEY_MISTRAL");
             InitializeComponent();
             _isRecording = false;
+
             _audioBuffer = new List<short>();
 
             string folderPath = Path.Combine(AppContext.BaseDirectory, "voiceRecords");
@@ -61,7 +71,20 @@ namespace BobikAssistant
             InitVosk();
             silenceTimer = new System.Timers.Timer(100);
             silenceTimer.Elapsed += OnSilenceTimerElapsed;
+            LoadMessageHistory();
+            BindingContext = this;
         }
+
+        private void DownScroll(object sender, EventArgs e)
+        {
+            // Прокручиваем содержимое ScrollView вниз при открытии страницы
+            Dispatcher.DispatchAsync(async () =>
+            {
+                await Task.Delay(200); // Задержка, чтобы контент успел загрузиться
+                await scroller.ScrollToAsync(0, scroller.ContentSize.Height, true);
+            });
+        }
+
 
         private void OnKeywordDetected()
         {
@@ -109,16 +132,42 @@ namespace BobikAssistant
             public object Logprobs { get; set; }
         }
 
-        public class Message
+        public class Message : INotifyPropertyChanged
         {
+            private string _role;
+            private string _content;
+
             [JsonPropertyName("role")]
-            public string Role { get; set; }
+            public string Role
+            {
+                get => _role;
+                set
+                {
+                    _role = value;
+                    OnPropertyChanged(nameof(Role));
+                }
+            }
 
             [JsonPropertyName("content")]
-            public string Content { get; set; }
+            public string Content
+            {
+                get => _content;
+                set
+                {
+                    _content = value;
+                    OnPropertyChanged(nameof(Content));
+                }
+            }
 
             [JsonPropertyName("tool_calls")]
             public object ToolCalls { get; set; }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+
+            protected void OnPropertyChanged(string propertyName)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
         }
 
         public class Usage
@@ -149,6 +198,7 @@ namespace BobikAssistant
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     StatusLabel.Text = $"Ошибка загрузки модели VOSK: {ex.Message}";
+                    
                 });
             }
         }
@@ -184,6 +234,7 @@ namespace BobikAssistant
 
         private void SpeakText(string text)
         {
+            _isSpeaking = true;
             using (var synthesizer = new SpeechSynthesizer())
             {
                 // synthesizer.Rate = 5; // мужской голос
@@ -219,10 +270,23 @@ namespace BobikAssistant
             }
         }
 
+        private void StopSpeaking()
+        {
+            if (_isSpeaking)
+            {
+                using (var synthesizer = new SpeechSynthesizer())
+                {
+                    synthesizer.SpeakAsyncCancelAll();
+                }
+                _isSpeaking = false;
+            }
+        }
+
         private void OnRecordButtonClicked(object sender, EventArgs e)
         {
             if (_isRecording)
             {
+                StopSpeaking();
                 waveIn.StopRecording();
                 writer?.Dispose();
                 DisposeWaveIn();
@@ -236,6 +300,7 @@ namespace BobikAssistant
             }
             else
             {
+                StopSpeaking();
                 DisposeWaveIn();
 
                 waveIn = new WaveInEvent
@@ -282,7 +347,10 @@ namespace BobikAssistant
                 // Читаем историю сообщений из файла
                 messageHistory = ReadMessageHistory();
                 messageHistory.Add(new { role = "user", content = "Отвечай как голосовой ассистент, дружелюбно и по делу, но не более 850 символов." + text });
-
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    MessageHistory.Add(new Message { Role = "user", Content = text });
+                });
                 // Создаем тело запроса
                 var requestBody = new
                 {
@@ -310,16 +378,28 @@ namespace BobikAssistant
                         // Выводим ответ
                         string newMessage = chatResponse.Choices[0].Message.Content.ToString();
                         newMessage = newMessage.Replace("**", "");
+                        /*
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
                             StatusLabel.Text = $"{chatResponse.Choices[0].Message.Content}";
                         });
-
+                        */
                         //messageHistory.Add(new { role = "user", content = text });
                         messageHistory.Add(new { role = "assistant", content = newMessage });
                         WriteLastMessage(messageHistory);
+                        // Обновляем историю сообщений в UI
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            MessageHistory.Add(new Message { Role = "assistant", Content = newMessage });
+                        });
+                        Dispatcher.DispatchAsync(async () =>
+                        {
+                            await scroller.ScrollToAsync(0, scroller.ContentSize.Height, true);
+                        });
 
                         SpeakText(newMessage); // Озвучиваем ответ от ИИ
+
+
                     }
                     else
                     {
@@ -402,10 +482,12 @@ namespace BobikAssistant
                                             {
                                                 text = textElement.GetString();
                                                 firstTextFound = true; // Текст найден, больше искать не нужно
+                                                /*
                                                 MainThread.BeginInvokeOnMainThread(() =>
                                                 {
                                                     StatusLabel.Text = $"{text}";
                                                 });
+                                                */
 
                                                 foreach (var command in OtherCommands.Commands)
                                                 {
@@ -438,6 +520,24 @@ namespace BobikAssistant
             });
         }
 
+        // Метод для загрузки истории сообщений из файла
+        private void LoadMessageHistory()
+        {
+            var messages = ReadMessageHistory();
+            foreach (var message in messages)
+            {
+                if (message is JsonElement jsonElement)
+                {
+                    string role = jsonElement.GetProperty("role").GetString();
+                    string content = jsonElement.GetProperty("content").GetString();
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        MessageHistory.Add(new Message { Role = role, Content = content });
+                    });
+                }
+            }
+        }
 
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 }
