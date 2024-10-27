@@ -5,10 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:BobikAssistant"
     Shell.FlyoutBehavior="Disabled"
-    Title="BobikAssistant">
+    Title="Бобик — умный ассистент, который всегда под рукой">
 
     <ShellContent
-        Title="Home"
         ContentTemplate="{DataTemplate local:MainPage}"
         Route="MainPage" />
 
