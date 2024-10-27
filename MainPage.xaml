@@ -2,8 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:BobikAssistant"
              x:Class="BobikAssistant.MainPage"
-                          Loaded="DownScroll">
-            
+             Loaded="DownScroll">
+
     <ContentPage.Resources>
         <ResourceDictionary>
             <local:RoleToColorConverter x:Key="RoleToColorConverter" />
@@ -12,37 +12,40 @@
     </ContentPage.Resources>
 
     <ScrollView x:Name="scroller">
-        <VerticalStackLayout            
-            Spacing="25">
-            
-            <Image
-                Source="dotnet_bot.png"
-                HeightRequest="100"
-                Aspect="AspectFit"
-                SemanticProperties.Description="dot net bot in a race car number eight" />
-            
+        <VerticalStackLayout Spacing="25">
+            <Image Source="dotnet_bot.png"
+                   HeightRequest="100"
+                   Aspect="AspectFit"
+                   SemanticProperties.Description="dot net bot in a race car number eight" />
 
-            <!-- Добавляем CollectionView для отображения истории сообщений -->
+            <!-- История сообщений -->
             <CollectionView x:Name="MessageHistoryView"
                             ItemsSource="{Binding MessageHistory}"
                             VerticalOptions="FillAndExpand">
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <HorizontalStackLayout HorizontalOptions="FillAndExpand">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
                             <Frame Padding="10"
-                                   Margin="5"
-                                   MaximumWidthRequest="550"
+                                   Margin="3"
+                                   WidthRequest="570"
                                    CornerRadius="20"
                                    HasShadow="True"
                                    BackgroundColor="{Binding Role, Converter={StaticResource RoleToColorConverter}}"
+                                   VerticalOptions="Center"
                                    HorizontalOptions="{Binding Role, Converter={StaticResource RoleToHorizontalOptionsConverter}}"
-                                   VerticalOptions="Center">
+                                   Grid.Column="{Binding Role, Converter={StaticResource RoleToHorizontalOptionsConverter}, ConverterParameter='GridColumn'}">
                                 <Label Text="{Binding Content}"
                                        TextColor="White"
                                        HorizontalOptions="Start"
                                        VerticalOptions="Center" />
                             </Frame>
-                        </HorizontalStackLayout>
+                        </Grid>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>

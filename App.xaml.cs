@@ -13,7 +13,7 @@
             var window = base.CreateWindow(activationState);
 
             // Устанавливаем начальные размеры окна
-            window.Width = 600; // ширина
+            window.Width = 650; // ширина
             window.Height = 780; // высота
 
             // Централизация окна

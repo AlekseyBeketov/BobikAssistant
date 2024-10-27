@@ -30,7 +30,6 @@ namespace BobikAssistant
         private WaveInEvent waveIn;
         private WaveFileWriter writer;
         private bool _isRecording;
-        private bool _isSpeaking;
         private string _filePath;
 
         private List<short> _audioBuffer;
@@ -234,7 +233,6 @@ namespace BobikAssistant
 
         private void SpeakText(string text)
         {
-            _isSpeaking = true;
             using (var synthesizer = new SpeechSynthesizer())
             {
                 // synthesizer.Rate = 5; // мужской голос
@@ -270,23 +268,10 @@ namespace BobikAssistant
             }
         }
 
-        private void StopSpeaking()
-        {
-            if (_isSpeaking)
-            {
-                using (var synthesizer = new SpeechSynthesizer())
-                {
-                    synthesizer.SpeakAsyncCancelAll();
-                }
-                _isSpeaking = false;
-            }
-        }
-
         private void OnRecordButtonClicked(object sender, EventArgs e)
         {
             if (_isRecording)
             {
-                StopSpeaking();
                 waveIn.StopRecording();
                 writer?.Dispose();
                 DisposeWaveIn();
@@ -300,7 +285,6 @@ namespace BobikAssistant
             }
             else
             {
-                StopSpeaking();
                 DisposeWaveIn();
 
                 waveIn = new WaveInEvent
@@ -538,6 +522,5 @@ namespace BobikAssistant
             }
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
     }
 }
