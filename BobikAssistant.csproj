@@ -57,13 +57,21 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <AndroidResource Remove="Icons\**" />
+	  <Compile Remove="Icons\**" />
+	  <EmbeddedResource Remove="Icons\**" />
+	  <MauiCss Remove="Icons\**" />
+	  <MauiXaml Remove="Icons\**" />
+	  <None Remove="Icons\**" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="DotNetEnv" Version="3.1.1" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
 		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="$(MauiVersion)" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
 		<PackageReference Include="NAudio" Version="2.2.1" />
 		<PackageReference Include="Plugin.Maui.Audio" Version="3.0.0" />
-		<PackageReference Include="Porcupine" Version="3.0.3" />
 		<PackageReference Include="System.Speech" Version="9.0.0-preview.7.24405.7" />
 		<PackageReference Include="Vosk" Version="0.3.38" />
 		<PackageReference Include="Xam.Plugin.Media" Version="6.0.2" />

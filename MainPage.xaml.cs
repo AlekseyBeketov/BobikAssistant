@@ -9,7 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using NAudio.Wave;
-using Pv;
+// using Pv;
 using Vosk;
 using System.Globalization;
 using System.Speech.Synthesis;
@@ -19,7 +19,6 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Microsoft.Maui.Dispatching;
-
 // using UIKit;
 
 namespace BobikAssistant
@@ -267,6 +266,13 @@ namespace BobikAssistant
                 */
             }
         }
+
+        private void OnSendButtonClicked(object sender, EventArgs e)
+        {
+
+        }
+
+
 
         private void OnRecordButtonClicked(object sender, EventArgs e)
         {

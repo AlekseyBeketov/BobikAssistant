@@ -16,7 +16,7 @@
 
         <!-- Прокручиваемая часть с сообщениями -->
         <ScrollView x:Name="scroller" Grid.Row="0">
-            <VerticalStackLayout Spacing="25" Padding="10">
+            <VerticalStackLayout Spacing="5" Padding="10">
                 <Image Source="dotnet_bot.png"
                        HeightRequest="100"
                        Aspect="AspectFit"
@@ -57,9 +57,30 @@
         </ScrollView>
 
         <!-- Закрепленная внизу панель с кнопкой -->
-        <StackLayout Grid.Row="1" Orientation="Horizontal" Padding="10" BackgroundColor="#DCDCDC">
-            <Button x:Name="RecordButton" Text="Начать запись" Clicked="OnRecordButtonClicked" />
-            <Label x:Name="StatusLabel"/>
+        <StackLayout Grid.Row="1" Padding="10,5,10,10" BackgroundColor="#DCDCDC" Spacing="3">
+
+            <!-- Верхняя часть с полем ввода и кнопкой отправки -->
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                <!-- Поле ввода с обводкой и закругленными углами -->
+                <Entry x:Name="MessageEntry" HeightRequest="40" BackgroundColor="White" 
+                       VerticalOptions="Center" Grid.Column="0" Placeholder="Введите сообщение..." />
+
+                <!-- Кнопка отправки с иконкой самолетика и курсором Pointer -->
+                <ImageButton x:Name="SendButton" Padding="7"  Clicked="OnSendButtonClicked" Grid.Column="1" 
+                             WidthRequest="30" HeightRequest="30" BackgroundColor="Transparent" local:CursorBehavior.Cursor="Hand"
+                             CornerRadius="10"
+                             Source="D:/Sources/BobikAssistant/BobikAssistant/Resources/Icons/send_icon.png"
+                             VerticalOptions="Center" />
+
+            </Grid>
+
+            <!-- Нижняя часть с кнопкой записи и статусом -->
+            <StackLayout Orientation="Horizontal">
+                <Button x:Name="RecordButton" Text="Начать запись" Clicked="OnRecordButtonClicked" 
+                        BackgroundColor="#273f87" CornerRadius="10" HorizontalOptions="FillAndExpand" local:CursorBehavior.Cursor="Hand"/>
+                <Label x:Name="StatusLabel"/>
+            </StackLayout>
+
         </StackLayout>
 
     </Grid>
