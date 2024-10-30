@@ -29,6 +29,7 @@ namespace BobikAssistant
         private WaveInEvent waveIn;
         private WaveFileWriter writer;
         private bool _isRecording;
+        private bool _isMuted = false;
         private string _filePath;
 
         private List<short> _audioBuffer;
@@ -38,9 +39,11 @@ namespace BobikAssistant
         private System.Timers.Timer silenceTimer;
         private DateTime lastSoundTime;
         private const int SilenceTimeout = 1500;
+        private const string BasePromt = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 850 символов!";
 
         public string text = "";
         private static readonly string storyFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
+
         private string apiKeyMistral = "";
 
         // Добавляем ObservableCollection для хранения истории сообщений
@@ -71,6 +74,7 @@ namespace BobikAssistant
             silenceTimer.Elapsed += OnSilenceTimerElapsed;
             LoadMessageHistory();
             BindingContext = this;
+            MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
         }
 
         private void DownScroll(object sender, EventArgs e)
@@ -134,6 +138,7 @@ namespace BobikAssistant
         {
             private string _role;
             private string _content;
+            private string _displayContent;
 
             [JsonPropertyName("role")]
             public string Role
@@ -154,11 +159,21 @@ namespace BobikAssistant
                 {
                     _content = value;
                     OnPropertyChanged(nameof(Content));
+                    DisplayContent = value.Replace(FilterPhrase, string.Empty).Trim();
                 }
             }
 
-            [JsonPropertyName("tool_calls")]
-            public object ToolCalls { get; set; }
+            public string DisplayContent
+            {
+                get => _displayContent;
+                set
+                {
+                    _displayContent = value;
+                    OnPropertyChanged(nameof(DisplayContent));
+                }
+            }
+
+            private const string FilterPhrase = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 850 символов!";
 
             public event PropertyChangedEventHandler PropertyChanged;
 
@@ -196,7 +211,6 @@ namespace BobikAssistant
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     StatusLabel.Text = $"Ошибка загрузки модели VOSK: {ex.Message}";
-                    
                 });
             }
         }
@@ -232,6 +246,8 @@ namespace BobikAssistant
 
         private void SpeakText(string text)
         {
+            if (_isMuted)
+                return;
             using (var synthesizer = new SpeechSynthesizer())
             {
                 // synthesizer.Rate = 5; // мужской голос
@@ -267,9 +283,17 @@ namespace BobikAssistant
             }
         }
 
+        private void OnMuteButtonClicked(object sender, EventArgs e)
+        {
+            _isMuted = !_isMuted;
+            MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
+        }
+
         private void OnSendButtonClicked(object sender, EventArgs e)
         {
-
+            string text = MessageEntry.Text;
+            Task.Run(() => SendToMistralAsync(text));
+            MessageEntry.Text = "";
         }
 
 
@@ -326,9 +350,9 @@ namespace BobikAssistant
         // Метод для отправки распознанного текста в Mistral AI
         private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 
-        List<object> messageHistory = ReadMessageHistory();
         private async Task SendToMistralAsync(string text)
         {
+            List<object> messageHistory = ReadMessageHistory();
             using (HttpClient client = new HttpClient())
             {
                 // Устанавливаем заголовки
@@ -336,10 +360,11 @@ namespace BobikAssistant
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyMistral);
                 // Читаем историю сообщений из файла
                 messageHistory = ReadMessageHistory();
-                messageHistory.Add(new { role = "user", content = "Отвечай как голосовой ассистент, дружелюбно и по делу, но не более 850 символов." + text });
+                messageHistory.Add(new { role = "user", content = $"{BasePromt}" + text });
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    MessageHistory.Add(new Message { Role = "user", Content = text });
+                    MessageHistory.Add(new Message { Role = "user", Content = $"{BasePromt}" + text });
+                    DownScroll(null, null);
                 });
                 // Создаем тело запроса
                 var requestBody = new
@@ -381,6 +406,7 @@ namespace BobikAssistant
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
                             MessageHistory.Add(new Message { Role = "assistant", Content = newMessage });
+                            DownScroll(null, null); // Вызываем функцию DownScroll
                         });
                         Dispatcher.DispatchAsync(async () =>
                         {
@@ -388,8 +414,6 @@ namespace BobikAssistant
                         });
 
                         SpeakText(newMessage); // Озвучиваем ответ от ИИ
-
-
                     }
                     else
                     {
@@ -509,7 +533,7 @@ namespace BobikAssistant
                 }
             });
         }
-
+        
         // Метод для загрузки истории сообщений из файла
         private void LoadMessageHistory()
         {
