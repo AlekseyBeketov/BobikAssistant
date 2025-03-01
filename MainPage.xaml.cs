@@ -25,37 +25,39 @@ namespace BobikAssistant
 {
     public partial class MainPage : ContentPage, INotifyPropertyChanged
     {
-        private VoskKeywordDetector keywordDetector;
-        private WaveInEvent waveIn;
+		public ObservableCollection<Message> MessageHistory { get; set; } = new ObservableCollection<Message>();
+
+		private VoskKeywordDetector keywordDetector;
+        private WaveInEvent ?waveIn;
         private WaveFileWriter writer;
-        private bool _isRecording;
-        private bool _isMuted = false;
-        private string _filePath;
 
-        private List<short> _audioBuffer;
+		private Model voskModel;
+		private DateTime lastSoundTime;
+		private System.Timers.Timer silenceTimer;
 
-        private Model voskModel;
+		private SpeechSynthesizer synthesizer = new SpeechSynthesizer();
+		private List<short> _audioBuffer;
+		private const int SilenceTimeout = 1000;
 
-        private System.Timers.Timer silenceTimer;
-        private DateTime lastSoundTime;
-        private const int SilenceTimeout = 1000;
+		private bool _isRecording;
+        private bool _isMuted;
+
         private const string BasePromt = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 650 символов!";
         private const string Ollama_Url = "http://127.0.0.1:11434/api/generate";
-		private SpeechSynthesizer synthesizer;
 
-		public string text = "";
-        private static readonly string storyFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
+		private static readonly string VoskModelPath = "D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22";
+		private static readonly string StoryFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
+		private static readonly string ApiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 
-        private string apiKeyMistral = "";
-
-        // Добавляем ObservableCollection для хранения истории сообщений
-        public ObservableCollection<Message> MessageHistory { get; set; } = new ObservableCollection<Message>();
+		private string _fileVoicePath { get; set; }
+		public string text { get; set; }
+        private string apiKeyMistral { get; set; }
 
         public MainPage()
         {
             string envFilePath = Path.Combine(AppContext.BaseDirectory, ".env");
             Env.Load(envFilePath);
-            apiKeyMistral = Environment.GetEnvironmentVariable("API_KEY_MISTRAL");
+            apiKeyMistral = Environment.GetEnvironmentVariable("API_KEY_MISTRAL") ?? string.Empty;
             InitializeComponent();
             _isRecording = false;
 
@@ -68,7 +70,7 @@ namespace BobikAssistant
                 Directory.CreateDirectory(folderPath);
             }
 
-            _filePath = $"{folderPath}/записьГолоса.wav";
+			_fileVoicePath = $"{folderPath}/записьГолоса.wav";
             keywordDetector = new VoskKeywordDetector("бобик", OnKeywordDetected);
             keywordDetector.StartListening();
 			InitVosk();
@@ -80,7 +82,7 @@ namespace BobikAssistant
             MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
         }
 
-        private void DownScroll(object sender, EventArgs e)
+        private void DownScroll(object? sender, EventArgs? e)
         {
             // Прокручиваем содержимое ScrollView вниз при открытии страницы
             Dispatcher.DispatchAsync(async () =>
@@ -99,121 +101,13 @@ namespace BobikAssistant
             keywordDetector.StopListening();
         }
 
-
-        public class ChatResponse
-        {
-            [JsonPropertyName("id")]
-            public string Id { get; set; }
-
-            [JsonPropertyName("object")]
-            public string Object { get; set; }
-
-            [JsonPropertyName("created")]
-            public long Created { get; set; }
-
-            [JsonPropertyName("model")]
-            public string Model { get; set; }
-
-            [JsonPropertyName("choices")]
-            public Choice[] Choices { get; set; }
-
-            [JsonPropertyName("usage")]
-            public Usage Usage { get; set; }
-        }
-
-        public class Choice
-        {
-            [JsonPropertyName("index")]
-            public int Index { get; set; }
-
-            [JsonPropertyName("message")]
-            public Message Message { get; set; }
-
-            [JsonPropertyName("finish_reason")]
-            public string FinishReason { get; set; }
-
-            [JsonPropertyName("logprobs")]
-            public object Logprobs { get; set; }
-        }
-
-        public class Message : INotifyPropertyChanged
-        {
-            private string _role;
-            private string _content;
-            private string _displayContent;
-
-            [JsonPropertyName("role")]
-            public string Role
-            {
-                get => _role;
-                set
-                {
-                    _role = value;
-                    OnPropertyChanged(nameof(Role));
-                }
-            }
-
-            [JsonPropertyName("content")]
-            public string Content
-            {
-                get => _content;
-                set
-                {
-                    _content = value;
-                    OnPropertyChanged(nameof(Content));
-                    DisplayContent = value.Replace(FilterPhrase, string.Empty).Trim();
-                }
-            }
-
-            public string DisplayContent
-            {
-                get => _displayContent;
-                set
-                {
-                    _displayContent = value;
-                    OnPropertyChanged(nameof(DisplayContent));
-                }
-            }
-
-            private const string FilterPhrase = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 850 символов!";
-
-            public event PropertyChangedEventHandler PropertyChanged;
-
-            protected void OnPropertyChanged(string propertyName)
-            {
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            }
-        }
-
-        public class Usage
-        {
-            [JsonPropertyName("prompt_tokens")]
-            public int PromptTokens { get; set; }
-
-            [JsonPropertyName("total_tokens")]
-            public int TotalTokens { get; set; }
-
-            [JsonPropertyName("completion_tokens")]
-            public int CompletionTokens { get; set; }
-        }
-
         private void InitVosk()
         {
             /////////////////////////////////////////////
             // ЛЕША У НАС ДВЕ МОДЕЛИ
             /////////////////////////////////////////////
 
-            try
-            {
-                voskModel = new Model("D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22");
-            }
-            catch (Exception ex)
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    StatusLabel.Text = $"Ошибка загрузки модели VOSK: {ex.Message}";
-                });
-            }
+            voskModel = new Model(VoskModelPath);
         }
 
         private void OnDataAvailable(object sender, WaveInEventArgs e)
@@ -234,7 +128,7 @@ namespace BobikAssistant
             }
         }
 
-        private void OnSilenceTimerElapsed(object sender, ElapsedEventArgs e)
+        private void OnSilenceTimerElapsed(object? sender, ElapsedEventArgs? e)
         {
             if (_isRecording && (DateTime.Now - lastSoundTime).TotalMilliseconds > SilenceTimeout)
             {
@@ -245,18 +139,10 @@ namespace BobikAssistant
             }
         }
 
-        private void SpeakText(string text)
-        {
-            if (_isMuted)
-                return;
-
-			if (_isMuted)
+		private void SpeakText(string text)
+		{
+			if (_isMuted || synthesizer == null)
 				return;
-
-			if (synthesizer == null)
-			{
-				synthesizer = new SpeechSynthesizer();
-			}
 
 			synthesizer.Rate = 3; // женский голос
 
@@ -266,7 +152,7 @@ namespace BobikAssistant
 			builder.EndVoice();
 
 			synthesizer.SpeakAsync(builder); // Асинхронное воспроизведение речи
-        }
+		}
 
 		private void StopSpeaking()
 		{
@@ -287,18 +173,18 @@ namespace BobikAssistant
 			}
 		}
 
-		private void OnSendButtonClicked(object sender, EventArgs e)
+		private void OnSendButtonClicked(object? sender, EventArgs? e)
         {
             string text = MessageEntry.Text;
             Task.Run(() => SendToOllamaAsync(text));
-            MessageEntry.Text = "";
+            MessageEntry.Text = string.Empty;
         }
 
-        private void OnRecordButtonClicked(object sender, EventArgs e)
+        private void OnRecordButtonClicked(object? sender, EventArgs? e)
         {
             if (_isRecording)
             {
-                waveIn.StopRecording();
+                waveIn?.StopRecording();
                 writer?.Dispose();
                 DisposeWaveIn();
                 silenceTimer.Stop();
@@ -306,7 +192,7 @@ namespace BobikAssistant
                 _isRecording = false;
 
                 // Обработка файла с помощью VOSK
-                Task.Run(() => ProcessWithVosk(_filePath));
+                Task.Run(() => ProcessWithVosk(_fileVoicePath));
             }
             else
             {
@@ -317,7 +203,7 @@ namespace BobikAssistant
                     WaveFormat = new WaveFormat(16000, 1)
                 };
 
-                writer = new WaveFileWriter(_filePath, waveIn.WaveFormat);
+                writer = new WaveFileWriter(_fileVoicePath, waveIn.WaveFormat);
                 waveIn.DataAvailable += OnDataAvailable;
 
                 waveIn.StartRecording();
@@ -376,7 +262,7 @@ namespace BobikAssistant
 					var chunk = JsonSerializer.Deserialize<Dictionary<string, object>>(responseText);
 					if (chunk != null && chunk.ContainsKey("response"))
 					{
-						string resultText = chunk["response"].ToString();
+						string resultText = chunk["response"].ToString() ?? string.Empty;
 
 						// Обновляем UI с полным ответом
 						MainThread.BeginInvokeOnMainThread(() =>
@@ -400,8 +286,6 @@ namespace BobikAssistant
 			}
 		}
 
-		// Метод для отправки распознанного текста в Mistral AI
-		private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 		private async Task SendToMistralAsync(string text)
         {
             List<object> messageHistory = ReadMessageHistory();
@@ -430,7 +314,7 @@ namespace BobikAssistant
                 var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
                 // Отправляем POST-запрос
-                HttpResponseMessage response = await client.PostAsync(apiUrlMistral, content);
+                HttpResponseMessage response = await client.PostAsync(ApiUrlMistral, content);
 
                 // Проверяем статус ответа
                 if (response.IsSuccessStatusCode)
@@ -444,7 +328,7 @@ namespace BobikAssistant
                     {
                         // Выводим ответ
                         string newMessage = chatResponse.Choices[0].Message.Content.ToString();
-                        newMessage = newMessage.Replace("**", "");
+                        newMessage = newMessage.Replace("**", string.Empty);
                         /*
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
@@ -460,7 +344,7 @@ namespace BobikAssistant
                             MessageHistory.Add(new Message { Role = "assistant", Content = newMessage });
                             DownScroll(null, null); // Вызываем функцию DownScroll
                         });
-                        Dispatcher.DispatchAsync(async () =>
+                        await Dispatcher.DispatchAsync(async () =>
                         {
                             await scroller.ScrollToAsync(0, scroller.ContentSize.Height, true);
                         });
@@ -482,10 +366,10 @@ namespace BobikAssistant
 
         private static List<object> ReadMessageHistory()
         {
-            if (File.Exists(storyFilePath))
+            if (File.Exists(StoryFilePath))
             {
-                string json = File.ReadAllText(storyFilePath);
-                return JsonSerializer.Deserialize<List<object>>(json);
+                string json = File.ReadAllText(StoryFilePath);
+                return JsonSerializer.Deserialize<List<object>>(json) ?? new List<object>();
             }
             else
             {
@@ -495,9 +379,9 @@ namespace BobikAssistant
 
 		private static string ReadMessageHistoryAsString()
 		{
-			if (File.Exists(storyFilePath))
+			if (File.Exists(StoryFilePath))
 			{
-				return File.ReadAllText(storyFilePath);
+				return File.ReadAllText(StoryFilePath);
 			}
 			else
 			{
@@ -515,7 +399,7 @@ namespace BobikAssistant
             }
 
             string json = JsonSerializer.Serialize(messages);
-            File.WriteAllText(storyFilePath, json);
+            File.WriteAllText(StoryFilePath, json);
         }
 
         private async Task ProcessWithVosk(string filePath)
@@ -559,7 +443,7 @@ namespace BobikAssistant
                                             JsonElement root = doc.RootElement;
                                             if (root.TryGetProperty("text", out JsonElement textElement) && !string.IsNullOrWhiteSpace(textElement.GetString()))
                                             {
-                                                text = textElement.GetString();
+                                                text = textElement.GetString() ?? string.Empty;
                                                 firstTextFound = true; // Текст найден, больше искать не нужно
                                                 /*
                                                 MainThread.BeginInvokeOnMainThread(() =>
@@ -607,15 +491,111 @@ namespace BobikAssistant
             {
                 if (message is JsonElement jsonElement)
                 {
-                    string role = jsonElement.GetProperty("role").GetString();
-                    string content = jsonElement.GetProperty("content").GetString();
+                    string role = jsonElement.GetProperty("role").GetString() ?? string.Empty;
+                    string content = jsonElement.GetProperty("content").GetString() ?? string.Empty;
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        MessageHistory.Add(new Message { Role = role, Content = content.Replace(BasePromt, "") });
+                        MessageHistory.Add(new Message { Role = role, Content = content.Replace(BasePromt, string.Empty) });
                     });
                 }
             }
         }
 
-    }
+		public class ChatResponse
+		{
+			[JsonPropertyName("id")]
+			public string Id { get; set; }
+
+			[JsonPropertyName("object")]
+			public string Object { get; set; }
+
+			[JsonPropertyName("created")]
+			public long Created { get; set; }
+
+			[JsonPropertyName("model")]
+			public string Model { get; set; }
+
+			[JsonPropertyName("choices")]
+			public Choice[] Choices { get; set; }
+
+			[JsonPropertyName("usage")]
+			public Usage Usage { get; set; }
+		}
+
+		public class Choice
+		{
+			[JsonPropertyName("index")]
+			public int Index { get; set; }
+
+			[JsonPropertyName("message")]
+			public Message Message { get; set; }
+
+			[JsonPropertyName("finish_reason")]
+			public string FinishReason { get; set; }
+
+			[JsonPropertyName("logprobs")]
+			public object Logprobs { get; set; }
+		}
+
+		public class Message : INotifyPropertyChanged
+		{
+			private string _role;
+			private string _content;
+			private string _displayContent;
+
+			[JsonPropertyName("role")]
+			public string Role
+			{
+				get => _role;
+				set
+				{
+					_role = value;
+					OnPropertyChanged(nameof(Role));
+				}
+			}
+
+			[JsonPropertyName("content")]
+			public string Content
+			{
+				get => _content;
+				set
+				{
+					_content = value;
+					OnPropertyChanged(nameof(Content));
+					DisplayContent = value.Replace(FilterPhrase, string.Empty).Trim();
+				}
+			}
+
+			public string DisplayContent
+			{
+				get => _displayContent;
+				set
+				{
+					_displayContent = value;
+					OnPropertyChanged(nameof(DisplayContent));
+				}
+			}
+
+			private const string FilterPhrase = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 850 символов!";
+
+			public event PropertyChangedEventHandler PropertyChanged;
+
+			protected void OnPropertyChanged(string propertyName)
+			{
+				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+			}
+		}
+
+		public class Usage
+		{
+			[JsonPropertyName("prompt_tokens")]
+			public int PromptTokens { get; set; }
+
+			[JsonPropertyName("total_tokens")]
+			public int TotalTokens { get; set; }
+
+			[JsonPropertyName("completion_tokens")]
+			public int CompletionTokens { get; set; }
+		}
+	}
 }

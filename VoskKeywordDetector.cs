@@ -9,14 +9,15 @@ namespace BobikAssistant
 {
     public class VoskKeywordDetector
     {
-        private WaveInEvent waveIn;
+        private WaveInEvent ?waveIn;
         private Model voskModel;
-        private VoskRecognizer recognizer;
+        private VoskRecognizer ?recognizer;
         private string keyword;
         private Action onKeywordDetected;
         private bool isListening;
+		private static readonly string voskModelPath = "D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22";
 
-        public VoskKeywordDetector(string keyword, Action onKeywordDetected)
+		public VoskKeywordDetector(string keyword, Action onKeywordDetected)
         {
             this.keyword = keyword;
             this.onKeywordDetected = onKeywordDetected;
@@ -25,8 +26,7 @@ namespace BobikAssistant
 
         private void Initialize()
         {
-            string modelPath = "D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22";
-            voskModel = new Model(modelPath);
+            voskModel = new Model(voskModelPath);
             recognizer = new VoskRecognizer(voskModel, 16000.0f);
             recognizer.SetMaxAlternatives(0);
             recognizer.SetWords(true);
@@ -43,7 +43,7 @@ namespace BobikAssistant
         {
             if (!isListening)
             {
-                waveIn.StartRecording();
+                waveIn?.StartRecording();
                 isListening = true;
             }
         }
@@ -52,12 +52,12 @@ namespace BobikAssistant
         {
             if (isListening)
             {
-                waveIn.StopRecording();
+                waveIn?.StopRecording();
                 isListening = false;
             }
         }
 
-        private void OnDataAvailable(object sender, WaveInEventArgs e)
+        private void OnDataAvailable(object? sender, WaveInEventArgs? e)
         {
             if (recognizer.AcceptWaveform(e.Buffer, e.BytesRecorded))
             {
@@ -71,8 +71,8 @@ namespace BobikAssistant
 
         public void Dispose()
         {
-            waveIn.Dispose();
-            recognizer.Dispose();
+            waveIn?.Dispose();
+            recognizer?.Dispose();
             voskModel.Dispose();
         }
     }
