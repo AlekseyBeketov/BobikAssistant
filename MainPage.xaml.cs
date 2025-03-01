@@ -38,10 +38,12 @@ namespace BobikAssistant
 
         private System.Timers.Timer silenceTimer;
         private DateTime lastSoundTime;
-        private const int SilenceTimeout = 1500;
-        private const string BasePromt = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 850 символов!";
+        private const int SilenceTimeout = 1000;
+        private const string BasePromt = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 650 символов!";
+        private const string Ollama_Url = "http://127.0.0.1:11434/api/generate";
+		private SpeechSynthesizer synthesizer;
 
-        public string text = "";
+		public string text = "";
         private static readonly string storyFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
 
         private string apiKeyMistral = "";
@@ -248,51 +250,48 @@ namespace BobikAssistant
         {
             if (_isMuted)
                 return;
-            using (var synthesizer = new SpeechSynthesizer())
-            {
-                // synthesizer.Rate = 5; // мужской голос
-                synthesizer.Rate = 3; // женский голос
-                var builder = new PromptBuilder();
-                builder.StartVoice(new CultureInfo("ru-RU")); // Устанавливаем русский язык
-                builder.AppendText(text);
-                builder.EndVoice();
-                synthesizer.Speak(builder); // женский голос
 
-                /* МУЖСКОЙ ГОЛОС
-                // Создаем MemoryStream для захвата аудиоданных
-                using (var memoryStream = new MemoryStream())
-                {
-                    synthesizer.SetOutputToWaveStream(memoryStream);
-                    synthesizer.Speak(builder);
+			if (_isMuted)
+				return;
 
-                    // Перенаправляем аудиоданные в микрофон
-                    memoryStream.Position = 0;
-                    using (var waveOut = new WaveOutEvent())
-                    using (var waveProvider = new RawSourceWaveStream(memoryStream, new WaveFormat(16000, 16, 1)))
-                    {
-                        waveOut.Init(waveProvider);
-                        waveOut.Play();
+			if (synthesizer == null)
+			{
+				synthesizer = new SpeechSynthesizer();
+			}
 
-                        while (waveOut.PlaybackState == PlaybackState.Playing)
-                        {
-                            System.Threading.Thread.Sleep(100);
-                        }
-                    }
-                }
-                */
-            }
+			synthesizer.Rate = 3; // женский голос
+
+			var builder = new PromptBuilder();
+			builder.StartVoice(new CultureInfo("ru-RU")); // Устанавливаем русский язык
+			builder.AppendText(text);
+			builder.EndVoice();
+
+			synthesizer.SpeakAsync(builder); // Асинхронное воспроизведение речи
         }
 
-        private void OnMuteButtonClicked(object sender, EventArgs e)
-        {
-            _isMuted = !_isMuted;
-            MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
-        }
+		private void StopSpeaking()
+		{
+			if (synthesizer != null)
+			{
+				synthesizer.SpeakAsyncCancelAll();
+			}
+		}
 
-        private void OnSendButtonClicked(object sender, EventArgs e)
+		private void OnMuteButtonClicked(object sender, EventArgs e)
+		{
+			_isMuted = !_isMuted;
+			MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
+
+			if (_isMuted)
+			{
+				StopSpeaking();
+			}
+		}
+
+		private void OnSendButtonClicked(object sender, EventArgs e)
         {
             string text = MessageEntry.Text;
-            Task.Run(() => SendToMistralAsync(text));
+            Task.Run(() => SendToOllamaAsync(text));
             MessageEntry.Text = "";
         }
 
@@ -350,7 +349,88 @@ namespace BobikAssistant
         // Метод для отправки распознанного текста в Mistral AI
         private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 
-        private async Task SendToMistralAsync(string text)
+        private async Task SendToOllamaAsync(string text)
+        {
+			using (HttpClient client = new HttpClient())
+			{
+				//// Устанавливаем заголовки
+				//client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+				//// Читаем историю сообщений из файла
+				//var messageHistory = ReadMessageHistoryAsString();
+				//messageHistory += $"role = \"user\", content = ${BasePromt} {text}";
+				//MainThread.BeginInvokeOnMainThread(() =>
+				//{
+				//	MessageHistory.Add(new Message { Role = "user", Content = $"{BasePromt}" + text });
+				//	DownScroll(null, null);
+				//});
+				//// Создаем тело запроса
+				//var requestBody = new
+				//{
+				//	model = "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q4_K",
+				//	prompt = messageHistory,
+				//	stream = true  // Включаем потоковый режим
+				//};
+
+				// Устанавливаем заголовки
+				client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+				// Читаем историю сообщений из файла
+				MainThread.BeginInvokeOnMainThread(() =>
+				{
+					MessageHistory.Add(new Message { Role = "user", Content = $"{BasePromt}" + text });
+					DownScroll(null, null);
+				});
+				// Создаем тело запроса
+				var requestBody = new
+				{
+					model = "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q4_K",
+					prompt = BasePromt + text,
+					stream = false  // Выключаем потоковый режим
+				};
+
+				// Сериализуем тело запроса в JSON
+				string jsonRequest = JsonSerializer.Serialize(requestBody);
+				var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+				// Отправляем POST-запрос
+				HttpResponseMessage response = await client.PostAsync(Ollama_Url, content);
+
+				// Проверяем статус ответа
+				if (response.IsSuccessStatusCode)
+				{
+					var messageHistory = ReadMessageHistory();
+					messageHistory.Add(new { role = "user", content = $"{BasePromt}" + text });
+
+					string responseText = await response.Content.ReadAsStringAsync();
+
+					// Декодируем JSON и получаем ответ
+					var chunk = JsonSerializer.Deserialize<Dictionary<string, object>>(responseText);
+					if (chunk != null && chunk.ContainsKey("response"))
+					{
+						string resultText = chunk["response"].ToString();
+
+						// Обновляем UI с полным ответом
+						MainThread.BeginInvokeOnMainThread(() =>
+						{
+							MessageHistory.Add(new Message { Role = "assistant", Content = resultText });
+							DownScroll(null, null);
+						});
+						messageHistory.Add(new { role = "assistant", content = resultText });
+						WriteLastMessage(messageHistory);
+
+						// Озвучиваем финальный ответ
+						SpeakText(resultText);
+					}
+				}
+				else
+				{
+					Console.WriteLine("Ошибка: " + response.StatusCode);
+				}
+
+				InitVosk();
+			}
+		}
+
+		private async Task SendToMistralAsync(string text)
         {
             List<object> messageHistory = ReadMessageHistory();
             using (HttpClient client = new HttpClient())
@@ -441,7 +521,20 @@ namespace BobikAssistant
             }
         }
 
-        private static void WriteLastMessage(List<object> messages)
+		private static string ReadMessageHistoryAsString()
+		{
+			if (File.Exists(storyFilePath))
+			{
+				return File.ReadAllText(storyFilePath);
+			}
+			else
+			{
+				return string.Empty;
+			}
+		}
+
+
+		private static void WriteLastMessage(List<object> messages)
         {
             // Если сообщений больше 8, оставляем только последние 8
             if (messages.Count > 8)
@@ -513,7 +606,7 @@ namespace BobikAssistant
                                                     }
                                                 }
 
-                                                Task.Run(() => SendToMistralAsync(text));
+                                                Task.Run(() => SendToOllamaAsync(text));
                                             }
                                         }
                                     }
