@@ -71,9 +71,10 @@ namespace BobikAssistant
             _filePath = $"{folderPath}/записьГолоса.wav";
             keywordDetector = new VoskKeywordDetector("бобик", OnKeywordDetected);
             keywordDetector.StartListening();
-            InitVosk();
+			InitVosk();
             silenceTimer = new System.Timers.Timer(100);
-            silenceTimer.Elapsed += OnSilenceTimerElapsed;
+			MessageEntry.Completed += OnSendButtonClicked;
+			silenceTimer.Elapsed += OnSilenceTimerElapsed;
             LoadMessageHistory();
             BindingContext = this;
             MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
@@ -88,7 +89,6 @@ namespace BobikAssistant
                 await scroller.ScrollToAsync(0, scroller.ContentSize.Height, true);
             });
         }
-
 
         private void OnKeywordDetected()
         {
@@ -203,10 +203,9 @@ namespace BobikAssistant
             // ЛЕША У НАС ДВЕ МОДЕЛИ
             /////////////////////////////////////////////
 
-
             try
             {
-                voskModel = new Model("D:/Sources/BobikAssistant/BobikAssistant/bin/voiceModels/vosk-model-small-ru-0.22");
+                voskModel = new Model("D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22");
             }
             catch (Exception ex)
             {
@@ -295,8 +294,6 @@ namespace BobikAssistant
             MessageEntry.Text = "";
         }
 
-
-
         private void OnRecordButtonClicked(object sender, EventArgs e)
         {
             if (_isRecording)
@@ -305,7 +302,6 @@ namespace BobikAssistant
                 writer?.Dispose();
                 DisposeWaveIn();
                 silenceTimer.Stop();
-                // StatusLabel.Text = $"Запись завершена. Файл сохранен: {_filePath}";
                 RecordButton.Text = "Начать запись";
                 _isRecording = false;
 
@@ -346,40 +342,17 @@ namespace BobikAssistant
             }
         }
 
-        // Метод для отправки распознанного текста в Mistral AI
-        private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
-
         private async Task SendToOllamaAsync(string text)
         {
 			using (HttpClient client = new HttpClient())
 			{
-				//// Устанавливаем заголовки
-				//client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-				//// Читаем историю сообщений из файла
-				//var messageHistory = ReadMessageHistoryAsString();
-				//messageHistory += $"role = \"user\", content = ${BasePromt} {text}";
-				//MainThread.BeginInvokeOnMainThread(() =>
-				//{
-				//	MessageHistory.Add(new Message { Role = "user", Content = $"{BasePromt}" + text });
-				//	DownScroll(null, null);
-				//});
-				//// Создаем тело запроса
-				//var requestBody = new
-				//{
-				//	model = "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q4_K",
-				//	prompt = messageHistory,
-				//	stream = true  // Включаем потоковый режим
-				//};
-
-				// Устанавливаем заголовки
 				client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-				// Читаем историю сообщений из файла
 				MainThread.BeginInvokeOnMainThread(() =>
 				{
-					MessageHistory.Add(new Message { Role = "user", Content = $"{BasePromt}" + text });
+					MessageHistory.Add(new Message { Role = "user", Content = text });
 					DownScroll(null, null);
 				});
-				// Создаем тело запроса
+
 				var requestBody = new
 				{
 					model = "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q4_K",
@@ -387,14 +360,11 @@ namespace BobikAssistant
 					stream = false  // Выключаем потоковый режим
 				};
 
-				// Сериализуем тело запроса в JSON
 				string jsonRequest = JsonSerializer.Serialize(requestBody);
 				var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
-				// Отправляем POST-запрос
 				HttpResponseMessage response = await client.PostAsync(Ollama_Url, content);
 
-				// Проверяем статус ответа
 				if (response.IsSuccessStatusCode)
 				{
 					var messageHistory = ReadMessageHistory();
@@ -430,6 +400,8 @@ namespace BobikAssistant
 			}
 		}
 
+		// Метод для отправки распознанного текста в Mistral AI
+		private static readonly string apiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 		private async Task SendToMistralAsync(string text)
         {
             List<object> messageHistory = ReadMessageHistory();
@@ -443,7 +415,7 @@ namespace BobikAssistant
                 messageHistory.Add(new { role = "user", content = $"{BasePromt}" + text });
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    MessageHistory.Add(new Message { Role = "user", Content = $"{BasePromt}" + text });
+                    MessageHistory.Add(new Message { Role = "user", Content = text });
                     DownScroll(null, null);
                 });
                 // Создаем тело запроса
@@ -639,7 +611,7 @@ namespace BobikAssistant
                     string content = jsonElement.GetProperty("content").GetString();
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        MessageHistory.Add(new Message { Role = role, Content = content });
+                        MessageHistory.Add(new Message { Role = role, Content = content.Replace(BasePromt, "") });
                     });
                 }
             }

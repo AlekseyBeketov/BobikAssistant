@@ -25,7 +25,7 @@ namespace BobikAssistant
 
         private void Initialize()
         {
-            string modelPath = "D:/Sources/BobikAssistant/BobikAssistant/bin/voiceModels/vosk-model-small-ru-0.22";
+            string modelPath = "D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22";
             voskModel = new Model(modelPath);
             recognizer = new VoskRecognizer(voskModel, 16000.0f);
             recognizer.SetMaxAlternatives(0);
