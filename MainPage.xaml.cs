@@ -42,15 +42,15 @@ namespace BobikAssistant
 		private bool _isRecording;
         private bool _isMuted;
 
-        private const string BasePromt = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 650 символов!";
-        private const string Ollama_Url = "http://127.0.0.1:11434/api/generate";
+        private const string BasePrompt = "Отвечай как голосовой ассистент, дружелюбно и по делу, но строго не более 650 символов!";
+        private const string Ollama_Url = "http://127.0.0.1:11434/api/chat";
 
 		private static readonly string VoskModelPath = "D:/Sources/BobikAssistant/BobikAssistant/voiceModels/vosk-model-small-ru-0.22";
 		private static readonly string StoryFilePath = "D:/Sources/BobikAssistant/BobikAssistant/story.txt";
 		private static readonly string ApiUrlMistral = "https://api.mistral.ai/v1/chat/completions";
 
 		private string _fileVoicePath { get; set; }
-		public string text { get; set; }
+		public string userInputText { get; set; }
         private string apiKeyMistral { get; set; }
 
         public MainPage()
@@ -77,7 +77,7 @@ namespace BobikAssistant
             silenceTimer = new System.Timers.Timer(100);
 			MessageEntry.Completed += OnSendButtonClicked;
 			silenceTimer.Elapsed += OnSilenceTimerElapsed;
-            LoadMessageHistory();
+			_ = LoadMessageHistoryAsync();
             BindingContext = this;
             MuteButton.Source = (ImageSource)new MuteIconConverter().Convert(_isMuted, typeof(ImageSource), null, null);
         }
@@ -175,9 +175,13 @@ namespace BobikAssistant
 
 		private void OnSendButtonClicked(object? sender, EventArgs? e)
         {
-            string text = MessageEntry.Text;
-            Task.Run(() => SendToOllamaAsync(text));
-            MessageEntry.Text = string.Empty;
+            StopSpeaking();
+			string text = MessageEntry.Text;
+            if (text != string.Empty)
+            {
+				Task.Run(() => SendToOllamaAsync(text));
+				MessageEntry.Text = string.Empty;
+			}
         }
 
         private void OnRecordButtonClicked(object? sender, EventArgs? e)
@@ -230,19 +234,23 @@ namespace BobikAssistant
 
         private async Task SendToOllamaAsync(string text)
         {
+			MainThread.BeginInvokeOnMainThread(() =>
+			{
+				MessageHistory.Add(new Message { Role = "user", Content = text });
+				DownScroll(null, null);
+			});
+
+			var messageHistory = await ReadMessageHistoryAsync();
+			messageHistory.Add(new { role = "user", content = $"{BasePrompt}" + text });
+
 			using (HttpClient client = new HttpClient())
 			{
-				client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-				MainThread.BeginInvokeOnMainThread(() =>
-				{
-					MessageHistory.Add(new Message { Role = "user", Content = text });
-					DownScroll(null, null);
-				});
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
 				var requestBody = new
 				{
 					model = "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q4_K",
-					prompt = BasePromt + text,
+					messages = messageHistory,
 					stream = false  // Выключаем потоковый режим
 				};
 
@@ -253,33 +261,50 @@ namespace BobikAssistant
 
 				if (response.IsSuccessStatusCode)
 				{
-					var messageHistory = ReadMessageHistory();
-					messageHistory.Add(new { role = "user", content = $"{BasePromt}" + text });
-
 					string responseText = await response.Content.ReadAsStringAsync();
 
-					// Декодируем JSON и получаем ответ
-					var chunk = JsonSerializer.Deserialize<Dictionary<string, object>>(responseText);
-					if (chunk != null && chunk.ContainsKey("response"))
+					var options = new JsonSerializerOptions
 					{
-						string resultText = chunk["response"].ToString() ?? string.Empty;
+						PropertyNameCaseInsensitive = true // Игнорируем регистр
+					};
 
-						// Обновляем UI с полным ответом
+					var ollamaResponse = JsonSerializer.Deserialize<OllamaResponse>(responseText, options);
+
+					if (ollamaResponse != null && ollamaResponse.Message?.Content != null)
+					{
+						string resultText = ollamaResponse.Message.Content.Replace("\n---\n","");
+
 						MainThread.BeginInvokeOnMainThread(() =>
 						{
 							MessageHistory.Add(new Message { Role = "assistant", Content = resultText });
 							DownScroll(null, null);
 						});
-						messageHistory.Add(new { role = "assistant", content = resultText });
-						WriteLastMessage(messageHistory);
 
-						// Озвучиваем финальный ответ
+						messageHistory.Add(new { role = "assistant", content = resultText });
+						await WriteLastMessageAsync(messageHistory);
 						SpeakText(resultText);
+					}
+					else
+					{
+                        string errorText = "Произошла ошибка, повторите попытку позже";
+						messageHistory.Add(new { role = "assistant", content = errorText });
+						MainThread.BeginInvokeOnMainThread(() =>
+						{
+							MessageHistory.Add(new Message { Role = "assistant", Content = errorText });
+							DownScroll(null, null);
+						});
 					}
 				}
 				else
 				{
-					Console.WriteLine("Ошибка: " + response.StatusCode);
+					string errorText = "Возникла ошибка: " + response.StatusCode;
+					messageHistory.Add(new { role = "assistant", content = errorText });
+
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						MessageHistory.Add(new Message { Role = "assistant", Content = errorText });
+						DownScroll(null, null);
+					});
 				}
 
 				InitVosk();
@@ -288,15 +313,15 @@ namespace BobikAssistant
 
 		private async Task SendToMistralAsync(string text)
         {
-            List<object> messageHistory = ReadMessageHistory();
+            List<object> messageHistory = await ReadMessageHistoryAsync();
             using (HttpClient client = new HttpClient())
             {
                 // Устанавливаем заголовки
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyMistral);
                 // Читаем историю сообщений из файла
-                messageHistory = ReadMessageHistory();
-                messageHistory.Add(new { role = "user", content = $"{BasePromt}" + text });
+                messageHistory = await ReadMessageHistoryAsync();
+                messageHistory.Add(new { role = "user", content = $"{BasePrompt}" + text });
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     MessageHistory.Add(new Message { Role = "user", Content = text });
@@ -329,15 +354,9 @@ namespace BobikAssistant
                         // Выводим ответ
                         string newMessage = chatResponse.Choices[0].Message.Content.ToString();
                         newMessage = newMessage.Replace("**", string.Empty);
-                        /*
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            StatusLabel.Text = $"{chatResponse.Choices[0].Message.Content}";
-                        });
-                        */
-                        //messageHistory.Add(new { role = "user", content = text });
+
                         messageHistory.Add(new { role = "assistant", content = newMessage });
-                        WriteLastMessage(messageHistory);
+						await WriteLastMessageAsync(messageHistory);
                         // Обновляем историю сообщений в UI
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
@@ -353,44 +372,45 @@ namespace BobikAssistant
                     }
                     else
                     {
-                        Console.WriteLine("Ошибка десериализации или нет выбора.");
+						string errorText = "Ошибка десериализации или нет выбора.";
+						messageHistory.Add(new { role = "assistant", content = errorText });
+
+						MainThread.BeginInvokeOnMainThread(() =>
+						{
+							MessageHistory.Add(new Message { Role = "assistant", Content = errorText });
+							DownScroll(null, null);
+						});
                     }
                 }
                 else
                 {
-                    Console.WriteLine("Ошибка: " + response.StatusCode);
+					string errorText = "Возникла ошибка: " + response.StatusCode;
+					messageHistory.Add(new { role = "assistant", content = errorText });
+
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						MessageHistory.Add(new Message { Role = "assistant", Content = errorText });
+						DownScroll(null, null);
+					});
                 }
                 InitVosk();
             }
         }
 
-        private static List<object> ReadMessageHistory()
-        {
-            if (File.Exists(StoryFilePath))
-            {
-                string json = File.ReadAllText(StoryFilePath);
-                return JsonSerializer.Deserialize<List<object>>(json) ?? new List<object>();
-            }
-            else
-            {
-                return new List<object>();
-            }
-        }
-
-		private static string ReadMessageHistoryAsString()
+		private static async Task<List<object>> ReadMessageHistoryAsync()
 		{
 			if (File.Exists(StoryFilePath))
 			{
-				return File.ReadAllText(StoryFilePath);
+				string json = await File.ReadAllTextAsync(StoryFilePath);
+				return JsonSerializer.Deserialize<List<object>>(json) ?? new List<object>();
 			}
 			else
 			{
-				return string.Empty;
+				return new List<object>();
 			}
 		}
 
-
-		private static void WriteLastMessage(List<object> messages)
+		private static async Task WriteLastMessageAsync(List<object> messages)
         {
             // Если сообщений больше 8, оставляем только последние 8
             if (messages.Count > 8)
@@ -399,7 +419,7 @@ namespace BobikAssistant
             }
 
             string json = JsonSerializer.Serialize(messages);
-            File.WriteAllText(StoryFilePath, json);
+            await File.WriteAllTextAsync(StoryFilePath, json);
         }
 
         private async Task ProcessWithVosk(string filePath)
@@ -443,7 +463,7 @@ namespace BobikAssistant
                                             JsonElement root = doc.RootElement;
                                             if (root.TryGetProperty("text", out JsonElement textElement) && !string.IsNullOrWhiteSpace(textElement.GetString()))
                                             {
-                                                text = textElement.GetString() ?? string.Empty;
+												userInputText = textElement.GetString() ?? string.Empty;
                                                 firstTextFound = true; // Текст найден, больше искать не нужно
                                                 /*
                                                 MainThread.BeginInvokeOnMainThread(() =>
@@ -455,14 +475,14 @@ namespace BobikAssistant
                                                 foreach (var command in OtherCommands.Commands)
                                                 {
                                                     string keyValue = command.Key;
-                                                    if (text.Contains(keyValue))
+                                                    if (userInputText.Contains(keyValue))
                                                     {
                                                         command.Value(StatusLabel);
                                                         break; // WARNING 
                                                     }
                                                 }
 
-                                                Task.Run(() => SendToOllamaAsync(text));
+                                                Task.Run(() => SendToOllamaAsync(userInputText));
                                             }
                                         }
                                     }
@@ -482,24 +502,26 @@ namespace BobikAssistant
                 }
             });
         }
-        
-        // Метод для загрузки истории сообщений из файла
-        private void LoadMessageHistory()
-        {
-            var messages = ReadMessageHistory();
-            foreach (var message in messages)
-            {
-                if (message is JsonElement jsonElement)
-                {
-                    string role = jsonElement.GetProperty("role").GetString() ?? string.Empty;
-                    string content = jsonElement.GetProperty("content").GetString() ?? string.Empty;
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        MessageHistory.Add(new Message { Role = role, Content = content.Replace(BasePromt, string.Empty) });
-                    });
-                }
-            }
-        }
+
+		// Метод для загрузки истории сообщений из файла
+		private async Task LoadMessageHistoryAsync()
+		{
+			var messages = await ReadMessageHistoryAsync();
+
+			foreach (var message in messages)
+			{
+				if (message is JsonElement jsonElement)
+				{
+					string role = jsonElement.GetProperty("role").GetString() ?? string.Empty;
+					string content = jsonElement.GetProperty("content").GetString() ?? string.Empty;
+
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						MessageHistory.Add(new Message { Role = role, Content = content.Replace(BasePrompt, string.Empty) });
+					});
+				}
+			}
+		}
 
 		public class ChatResponse
 		{
@@ -562,7 +584,7 @@ namespace BobikAssistant
 				{
 					_content = value;
 					OnPropertyChanged(nameof(Content));
-					DisplayContent = value.Replace(FilterPhrase, string.Empty).Trim();
+					DisplayContent = value.Replace(FilterPhrase, string.Empty).Trim() ?? string.Empty;
 				}
 			}
 
@@ -596,6 +618,51 @@ namespace BobikAssistant
 
 			[JsonPropertyName("completion_tokens")]
 			public int CompletionTokens { get; set; }
+		}
+
+		public class OllamaResponse
+		{
+			[JsonPropertyName("model")]
+			public string Model { get; set; }
+
+			[JsonPropertyName("created_at")]
+			public string CreatedAt { get; set; }
+
+			[JsonPropertyName("message")]
+			public OllamaMessage Message { get; set; }
+
+			[JsonPropertyName("done_reason")]
+			public string DoneReason { get; set; }
+
+			[JsonPropertyName("done")]
+			public bool Done { get; set; }
+
+			[JsonPropertyName("total_duration")]
+			public long TotalDuration { get; set; }
+
+			[JsonPropertyName("load_duration")]
+			public long LoadDuration { get; set; }
+
+			[JsonPropertyName("prompt_eval_count")]
+			public int PromptEvalCount { get; set; }
+
+			[JsonPropertyName("prompt_eval_duration")]
+			public long PromptEvalDuration { get; set; }
+
+			[JsonPropertyName("eval_count")]
+			public int EvalCount { get; set; }
+
+			[JsonPropertyName("eval_duration")]
+			public long EvalDuration { get; set; }
+		}
+
+		public class OllamaMessage
+		{
+			[JsonPropertyName("role")]
+			public string Role { get; set; }
+
+			[JsonPropertyName("content")]
+			public string Content { get; set; }
 		}
 	}
 }
