@@ -8,7 +8,7 @@ namespace BobikAssistant
     {
         private const double MaxWidth = 700; // Максимальная ширина сообщения
         private const double MinWidth = 370; // Минимальная ширина сообщения
-        private const double ScaleFactor = 0.8; // Коэффициент масштабирования
+        private const double ScaleFactor = 0.8; // Коэффициент масштабированияяя
 
 
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
