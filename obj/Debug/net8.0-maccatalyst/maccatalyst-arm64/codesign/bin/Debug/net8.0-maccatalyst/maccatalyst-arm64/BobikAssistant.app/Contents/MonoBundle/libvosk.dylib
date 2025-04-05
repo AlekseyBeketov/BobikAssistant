@@ -1,0 +1,1 @@
+-v --force --timestamp=none --sign - /Users/alexbeketov/Developer/BobikAssistant/BobikAssistant/bin/Debug/net8.0-maccatalyst/maccatalyst-arm64/BobikAssistant.app/Contents/MonoBundle/libvosk.dylib
