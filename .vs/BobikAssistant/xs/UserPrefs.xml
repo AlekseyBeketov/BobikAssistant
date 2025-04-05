@@ -1,0 +1,40 @@
+﻿<Properties StartupConfiguration="{E96CFD3B-A6D0-B496-F148-DEAB5CE55048}|Default">
+  <MonoDevelop.Ide.Workbench ActiveDocument="VoskKeywordDetector.cs">
+    <Files>
+      <File FileName="MainPage.xaml.cs" Line="82" Column="43" IsPinned="True" />
+      <File FileName="VoskKeywordDetector.cs" Line="24" Column="26" />
+      <File FileName="../../../../../usr/local/share/dotnet/packs/Microsoft.MacCatalyst.Sdk.net8.0_18.0/18.0.8319/tools/msbuild/iOS/Xamarin.Shared.targets" Line="1825" Column="16" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="BobikAssistant" expanded="True">
+            <Node name="BobikAssistant" expanded="True">
+              <Node name="Dependencies" expanded="True">
+                <Node name="PackageDependencies" expanded="True" />
+              </Node>
+              <Node name="Platforms" expanded="True">
+                <Node name="MacCatalyst" expanded="True" />
+              </Node>
+              <Node name="MainPage.xaml" expanded="True" />
+              <Node name="VoskKeywordDetector.cs" selected="True" />
+            </Node>
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.ItemProperties.BobikAssistant PreferredExecutionTarget="MyAppleMacCatalystID" Xamarin.HotReload.DebuggerTimeoutException.BobikAssistant.HideInfoBar="True" />
+  <Xamarin.Addins.Core.Project ActiveDebugTarget="MyAppleMacCatalystID" />
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="/Users/alexbeketov/Sources/BobikAssistant/BobikAssistant/VoskKeywordDetector.cs" relfile="VoskKeywordDetector.cs" line="20" column="1" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MultiItemStartupConfigurations />
+  <Debugger.DebugSourceFolders>
+    <String>/Users/alexbeketov/Library/Caches/VisualStudio/17.0/Symbols/raw.githubusercontent.com/xamarin/xamarin-macios/0ee28379dd5e85c830bad0270d064bbcec467647</String>
+  </Debugger.DebugSourceFolders>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+</Properties>

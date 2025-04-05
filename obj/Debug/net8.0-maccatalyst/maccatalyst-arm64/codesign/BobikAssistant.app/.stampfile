@@ -1,0 +1,1 @@
+-v --force --timestamp=none --sign - --entitlements /Users/alexbeketov/Developer/BobikAssistant/BobikAssistant/obj/Debug/net8.0-maccatalyst/maccatalyst-arm64/Entitlements.xcent /Users/alexbeketov/Developer/BobikAssistant/BobikAssistant/bin/Debug/net8.0-maccatalyst/maccatalyst-arm64/BobikAssistant.app

@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Windows Machine": {
+      "commandName": "MsixPackage",
+      "nativeDebugging": false
+    },
+    "Mac Catalyst": {
+      "commandName": "Project",
+      "targetFramework": "net8.0-maccatalyst",
+      "environmentVariables": {}
+    }
+  }
+}

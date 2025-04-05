@@ -1,0 +1,99 @@
+﻿<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:BobikAssistant"
+             x:Class="BobikAssistant.MainPage"
+             Loaded="DownScroll">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:RoleToColorConverter x:Key="RoleToColorConverter" />
+            <local:RoleToHorizontalOptionsConverter x:Key="RoleToHorizontalOptionsConverter" />
+            <local:MuteIconConverter x:Key="MuteIconConverter" />
+            <local:WidthConverter x:Key="WidthConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- "Auto,*,Auto" для разделения на шапку, прокручиваемую и фиксированную части -->
+
+        <!-- Шапка -->
+        <StackLayout Grid.Row="0" BackgroundColor="#08457E" Padding="10">
+            <ImageButton x:Name="MuteButton" Padding="7"  Clicked="OnMuteButtonClicked" Grid.Column="1" 
+                         WidthRequest="30" HeightRequest="30" 
+                         BackgroundColor="Transparent"
+                         CornerRadius="10"
+                         Source="{Binding Source={x:Reference MuteButton}, Path=BindingContext._isMuted, Converter={StaticResource MuteIconConverter}}"
+                         VerticalOptions="Center" />
+        </StackLayout>
+
+        <!-- Прокручиваемая часть с сообщениями -->
+        <ScrollView x:Name="scroller" Grid.Row="1">
+            <VerticalStackLayout Spacing="5" Padding="10">
+                <Image Source="dotnet_bot.png"
+                       HeightRequest="100"
+                       Aspect="AspectFit"
+                       SemanticProperties.Description="dot net bot in a race car number eight" />
+
+                <!-- История сообщений -->
+                <CollectionView x:Name="MessageHistoryView"
+                                ItemsSource="{Binding MessageHistory}"
+                                VerticalOptions="FillAndExpand">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Frame Padding="10"
+                                       Margin="3"
+                                       MaximumWidthRequest="{Binding Source={x:Reference scroller}, Path=Width, Converter={StaticResource WidthConverter}}"
+                                       CornerRadius="20"
+                                       HasShadow="True"
+                                       BackgroundColor="{Binding Role, Converter={StaticResource RoleToColorConverter}}"
+                                       VerticalOptions="Center"
+                                       HorizontalOptions="{Binding Role, Converter={StaticResource RoleToHorizontalOptionsConverter}}"
+                                       Grid.Column="{Binding Role, Converter={StaticResource RoleToHorizontalOptionsConverter}, ConverterParameter='GridColumn'}">
+                                    <Label Text="{Binding DisplayContent}"
+                                           TextColor="White"
+                                           HorizontalOptions="Start"
+                                           VerticalOptions="Center" />
+                                </Frame>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Закрепленная внизу панель с кнопкой -->
+        <StackLayout Grid.Row="2" Padding="10,5,10,10" BackgroundColor="#DCDCDC" Spacing="3">
+
+            <!-- Верхняя часть с полем ввода и кнопкой отправки -->
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                <!-- Поле ввода с обводкой и закругленными углами -->
+                <Entry x:Name="MessageEntry" HeightRequest="40" BackgroundColor="White" 
+                       VerticalOptions="Center" Grid.Column="0" Placeholder="Введите сообщение..." />
+
+                <!-- Кнопка отправки с иконкой самолетика и курсором Pointer -->
+                <ImageButton x:Name="SendButton" Padding="7"  Clicked="OnSendButtonClicked" Grid.Column="1" 
+                             WidthRequest="30" HeightRequest="30" BackgroundColor="Transparent"
+                             CornerRadius="10"
+                             Source="D:/Sources/BobikAssistant/BobikAssistant/Resources/Icons/send_icon.png"
+                             VerticalOptions="Center" />
+
+            </Grid>
+
+            <!-- Нижняя часть с кнопкой записи и статусом -->
+            <StackLayout Orientation="Horizontal">
+                <Button x:Name="RecordButton" Text="Начать запись" Clicked="OnRecordButtonClicked" 
+                        BackgroundColor="#273f87" CornerRadius="10" HorizontalOptions="FillAndExpand"/>
+                <Label x:Name="StatusLabel"/>
+            </StackLayout>
+
+        </StackLayout>
+
+    </Grid>
+</ContentPage>
